@@ -30,6 +30,15 @@ topic_discovery:
   top_terms_per_topic: 10
   auto_find_topics: true  # 최적 주제 수 자동 탐색
   
+  # 대용량 데이터 처리 설정
+  large_scale:
+    enabled: false  # 대용량 데이터 처리 모드 (true로 설정하면 활성화)
+    sample_size: 1000  # 샘플링 크기 (전체 데이터가 이보다 크면 샘플링)
+    max_topics_search: 10  # 최적 주제 수 탐색 범위 제한
+    use_keyword_naming: true  # LLM 대신 키워드 기반 주제명 생성
+    batch_size: 1000  # 배치 처리 크기
+    memory_efficient: true  # 메모리 효율적 처리
+  
 # 클러스터링 설정
 clustering:
   algorithm: "kmeans"

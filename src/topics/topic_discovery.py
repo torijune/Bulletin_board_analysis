@@ -47,6 +47,12 @@ class TopicDiscovery:
         """최적의 주제 수를 찾습니다."""
         print("최적 주제 수 탐색 중...")
         
+        # 대용량 데이터 처리 설정 확인
+        large_scale_config = self.topic_config.get('large_scale', {})
+        if large_scale_config.get('enabled', False):
+            max_topics = min(max_topics, large_scale_config.get('max_topics_search', 10))
+            print(f"대용량 데이터 모드: 최대 주제 수 탐색 범위를 {max_topics}로 제한")
+        
         # 텍스트 전처리
         processed_texts = []
         for text in texts:
@@ -105,6 +111,11 @@ class TopicDiscovery:
         """주제 모델을 학습합니다."""
         print("주제 발견 모델 학습 시작...")
         
+        # 대용량 데이터 처리 설정 확인
+        large_scale_config = self.topic_config.get('large_scale', {})
+        if large_scale_config.get('enabled', False):
+            texts = self._handle_large_scale_data(texts, large_scale_config)
+        
         # 최적 주제 수 찾기
         if self.topic_config.get('auto_find_topics', True):
             optimal_topics = self.find_optimal_topics(texts)
@@ -145,8 +156,34 @@ class TopicDiscovery:
         
         return self
     
+    def _handle_large_scale_data(self, texts: List[str], config: Dict[str, Any]) -> List[str]:
+        """대용량 데이터를 효율적으로 처리합니다."""
+        print(f"대용량 데이터 처리 모드 활성화 (원본 데이터: {len(texts)}개)")
+        
+        # 샘플링 크기 확인
+        sample_size = config.get('sample_size', 1000)
+        
+        if len(texts) > sample_size:
+            # 랜덤 샘플링
+            import random
+            random.seed(42)
+            sampled_indices = random.sample(range(len(texts)), sample_size)
+            sampled_texts = [texts[i] for i in sampled_indices]
+            
+            print(f"데이터 샘플링: {len(texts)}개 → {len(sampled_texts)}개")
+            return sampled_texts
+        else:
+            print(f"데이터 크기가 샘플링 기준({sample_size}개) 이하이므로 전체 데이터 사용")
+            return texts
+    
     def generate_topic_names(self, texts: List[str]) -> Dict[int, str]:
         """LLM을 사용하여 주제명을 생성합니다."""
+        # 대용량 데이터 처리 설정 확인
+        large_scale_config = self.topic_config.get('large_scale', {})
+        if large_scale_config.get('use_keyword_naming', False):
+            print("대용량 데이터 모드: 키워드 기반 주제명 생성 사용")
+            return self._generate_topic_names_from_keywords(texts)
+        
         if self.llm_client is None:
             print("LLM 클라이언트가 없어서 키워드 기반 주제명을 생성합니다.")
             return self._generate_topic_names_from_keywords(texts)
@@ -166,6 +203,10 @@ class TopicDiscovery:
             top_terms = self.get_top_terms()
             topic_keywords = [term for term, _ in top_terms[topic_id][:10]]
             
+            # 대용량 데이터에서는 대표 문서 수를 제한
+            max_example_texts = 3 if len(topic_texts) <= 10 else 1
+            example_texts = topic_texts[:max_example_texts]
+            
             # LLM 프롬프트 생성
             prompt = f"""
 다음 상담 데이터를 분석하여 적절한 주제명을 생성해주세요.
@@ -173,7 +214,7 @@ class TopicDiscovery:
 주제 키워드: {', '.join(topic_keywords)}
 
 주제에 포함된 상담 내용 예시:
-{chr(10).join([f"- {text[:100]}..." for text in topic_texts[:3]])}
+{chr(10).join([f"- {text[:100]}..." for text in example_texts])}
 
 위 내용을 종합하여 3-5단어로 된 간결하고 명확한 주제명을 생성해주세요.
 주제명만 응답해주세요.
@@ -376,7 +417,47 @@ class TopicDiscovery:
         topic_summary = self.create_topic_summary(texts)
         topic_summary.to_csv(f"{output_dir}/topic_summary.csv", index=False, encoding='utf-8-sig')
         
+        # 주제별로 문서 분리하여 저장
+        self.save_topic_documents(texts, topic_assignments, topic_names, output_dir)
+        
         print(f"결과 저장 완료: {output_dir}")
+    
+    def save_topic_documents(self, texts: List[str], topic_assignments: np.ndarray, topic_names: Dict[int, str], output_dir: str):
+        """주제별로 문서를 분리하여 저장합니다."""
+        print("주제별 문서 분리 및 저장 중...")
+        
+        # 주제별로 문서 그룹화
+        topic_documents = {}
+        for i, (text, topic_id) in enumerate(zip(texts, topic_assignments)):
+            if topic_id not in topic_documents:
+                topic_documents[topic_id] = []
+            topic_documents[topic_id].append({
+                'document_id': i,
+                'text': text,
+                'topic_id': topic_id,
+                'topic_name': topic_names[topic_id]
+            })
+        
+        # 각 주제별로 CSV 파일 저장
+        for topic_id, documents in topic_documents.items():
+            topic_name = topic_names[topic_id]
+            # 파일명에 사용할 수 있도록 특수문자 제거
+            safe_topic_name = topic_name.replace('/', '_').replace(' ', '_').replace(':', '_')
+            
+            topic_df = pd.DataFrame(documents)
+            filename = f"{output_dir}/topic_{topic_id}_{safe_topic_name}_documents.csv"
+            topic_df.to_csv(filename, index=False, encoding='utf-8-sig')
+            print(f"  주제 {topic_id} ({topic_name}): {len(documents)}개 문서 -> {filename}")
+        
+        # 전체 주제별 문서 인덱스 저장
+        all_topic_docs = []
+        for topic_id, documents in topic_documents.items():
+            for doc in documents:
+                all_topic_docs.append(doc)
+        
+        all_topic_df = pd.DataFrame(all_topic_docs)
+        all_topic_df.to_csv(f"{output_dir}/all_topic_documents.csv", index=False, encoding='utf-8-sig')
+        print(f"  전체 주제별 문서 인덱스: {len(all_topic_docs)}개 문서 -> {output_dir}/all_topic_documents.csv")
     
     def visualize_topics(self, output_dir: str):
         """주제 분포를 시각화합니다."""
