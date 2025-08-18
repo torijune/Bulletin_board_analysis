@@ -1,261 +1,175 @@
-# 대규모 상담/게시판 데이터 주제 발견 및 심층 분석 자동화
+# 대규모 상담/게시판 데이터 주제 발견 및 심층 분석 파이프라인
 
-## 📋 프로젝트 개요
+## 전체 분석 과정 다이어그램
 
-이 프로젝트는 대규모 상담/게시판 데이터(약 10,000행)에서 자동으로 주제를 발견하고, 주제별로 심층 분석을 수행하여 정책/운영 개선 인사이트를 도출하는 자동화 파이프라인입니다.
+```mermaid
+graph TB
+    %% 입력 데이터
+    A[📊 data_sample.xlsx<br/>원본 상담 데이터] --> B[🔧 데이터 전처리]
+    
+    %% 데이터 전처리 단계
+    B --> B1[📥 데이터 로드<br/>Excel 파일 읽기]
+    B1 --> B2[🧹 텍스트 정리<br/>특수문자 제거, 정규화]
+    B2 --> B3[🔗 텍스트 결합<br/>상담요약 + 상담내용]
+    B3 --> B4[📏 길이 필터링<br/>최소 20자 이상]
+    B4 --> B5[🔄 중복 제거<br/>동일 텍스트 제거]
+    B5 --> C[💾 전처리된 데이터<br/>preprocessed_data.csv]
+    
+    %% 주제 발견 단계
+    C --> D[🔍 주제 발견<br/>LDA 모델]
+    D --> D1[📝 텍스트 벡터화<br/>TF-IDF 변환]
+    D1 --> D2[🎯 LDA 모델 학습<br/>주제 수 자동 탐색]
+    D2 --> D3[🏷️ 주제 할당<br/>문서별 주제 분류]
+    D3 --> D4[📊 주제별 키워드<br/>상위 10개 단어]
+    D4 --> E[📈 주제 발견 결과<br/>topic_assignments.csv<br/>global_topics_top_terms.csv]
+    
+    %% 클러스터링 단계
+    C --> F[🎯 문서 클러스터링<br/>K-means + 임베딩]
+    F --> F1[🧠 텍스트 임베딩<br/>multilingual-MiniLM]
+    F1 --> F2[🔢 차원 축소<br/>PCA/UMAP]
+    F2 --> F3[🎯 K-means 클러스터링<br/>최적 클러스터 수 탐색]
+    F3 --> F4[📊 클러스터 분석<br/>대표 문서 선정]
+    F4 --> G[📊 클러스터링 결과<br/>cluster_assignments.csv<br/>cluster_summary.csv]
+    
+    %% LLM 분석 단계
+    G --> H[🤖 LLM 심층 분석<br/>GPT-3.5-turbo]
+    H --> H1[📋 클러스터별 텍스트 수집<br/>대표 문서 선별]
+    H1 --> H2[🔍 주요 원인 분석<br/>상담 발생 배경]
+    H2 --> H3[👥 주요 행위자 식별<br/>관련자 분석]
+    H3 --> H4[💡 정책 개선점 도출<br/>해결 방안 제시]
+    H4 --> I[📋 LLM 분석 결과<br/>analysis_results.json]
+    
+    %% 리포트 생성 단계
+    E --> J[📄 최종 리포트 생성]
+    G --> J
+    I --> J
+    J --> J1[📊 통계 분석<br/>빈도수, 교차분석]
+    J1 --> J2[📈 시각화 생성<br/>워드클라우드, 차트]
+    J2 --> J3[📝 마크다운 리포트<br/>분석_리포트.md]
+    J3 --> K[📁 최종 결과물<br/>outputs/]
+    
+    %% 출력 결과물
+    K --> L1[📊 CSV 파일들<br/>분석 결과 데이터]
+    K --> L2[📈 시각화 파일들<br/>차트, 워드클라우드]
+    K --> L3[📄 분석 리포트<br/>마크다운 문서]
+    K --> L4[📋 통계 요약<br/>final_statistics.json]
+    
+    %% 스타일 정의
+    classDef inputStyle fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef processStyle fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef outputStyle fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef dataStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    
+    class A inputStyle
+    class B,B1,B2,B3,B4,B5,D,D1,D2,D3,D4,F,F1,F2,F3,F4,H,H1,H2,H3,H4,J,J1,J2,J3 processStyle
+    class C,E,G,I,K outputStyle
+    class L1,L2,L3,L4 dataStyle
+```
 
-### 주요 기능
-- **전체 주제 발견**: LDA, NMF, BERTopic 등을 활용한 자동 주제 추출
-- **주제별 심층 분석**: 임베딩 기반 클러스터링 및 LLM 분석
-- **자동 리포트 생성**: CSV, Markdown, 시각화 결과물 자동 생성
+## 상세 분석 단계별 설명
 
-## 🏗️ 프로젝트 구조
+### 1. 🔧 데이터 전처리 단계
+- **입력**: `data_sample.xlsx` (원본 상담 데이터)
+- **처리 과정**:
+  - 텍스트 정리 (특수문자, 불용어 제거)
+  - 텍스트 결합 (상담요약 + 상담내용)
+  - 길이 필터링 (최소 20자)
+  - 중복 제거
+- **출력**: `preprocessed_data.csv`
+
+### 2. 🔍 주제 발견 단계
+- **입력**: 전처리된 텍스트 데이터
+- **처리 과정**:
+  - TF-IDF 벡터화
+  - LDA 모델 학습 (주제 수 자동 탐색)
+  - 문서별 주제 할당
+  - 주제별 키워드 추출
+- **출력**: `topic_assignments.csv`, `global_topics_top_terms.csv`
+
+### 3. 🎯 문서 클러스터링 단계
+- **입력**: 전처리된 텍스트 데이터
+- **처리 과정**:
+  - 다국어 임베딩 생성 (multilingual-MiniLM)
+  - 차원 축소 (PCA/UMAP)
+  - K-means 클러스터링 (최적 클러스터 수 탐색)
+  - 클러스터별 대표 문서 선정
+- **출력**: `cluster_assignments.csv`, `cluster_summary.csv`
+
+### 4. 🤖 LLM 심층 분석 단계
+- **입력**: 클러스터링 결과
+- **처리 과정**:
+  - 클러스터별 대표 텍스트 수집
+  - GPT-3.5-turbo를 통한 심층 분석
+  - 주요 원인, 행위자, 정책 개선점 도출
+- **출력**: `analysis_results.json`
+
+### 5. 📄 최종 리포트 생성 단계
+- **입력**: 모든 분석 결과
+- **처리 과정**:
+  - 통계 분석 및 교차분석
+  - 시각화 생성 (워드클라우드, 차트)
+  - 마크다운 리포트 생성
+- **출력**: `분석_리포트.md`, 시각화 파일들
+
+## 기술 스택
+
+```mermaid
+graph LR
+    A[📊 데이터 처리] --> A1[pandas]
+    A --> A2[numpy]
+    
+    B[🔍 텍스트 분석] --> B1[scikit-learn]
+    B --> B2[gensim]
+    B --> B3[konlpy]
+    
+    C[🧠 딥러닝] --> C1[sentence-transformers]
+    C --> C2[torch]
+    
+    D[🤖 LLM] --> D1[openai]
+    D --> D2[GPT-3.5-turbo]
+    
+    E[📈 시각화] --> E1[matplotlib]
+    E --> E2[seaborn]
+    E --> E3[wordcloud]
+    
+    F[⚙️ 유틸리티] --> F1[PyYAML]
+    F --> F2[pathlib]
+    F --> F3[json]
+    
+    classDef techStyle fill:#f0f8ff,stroke:#4169e1,stroke-width:2px
+    class A1,A2,B1,B2,B3,C1,C2,D1,D2,E1,E2,E3,F1,F2,F3 techStyle
+```
+
+## 출력 결과물 구조
 
 ```
-Bulletin_board_analysis/
-├── config.yaml                 # 프로젝트 설정 파일
-├── data_sample.xlsx            # 샘플 데이터
-├── requirements.txt            # 필요한 패키지 목록
-├── run_all.py                  # 전체 파이프라인 실행
-├── run_01_data_preprocessing.py    # 데이터 전처리
-├── run_02_topic_discovery.py       # 주제 발견
-├── run_03_clustering.py            # 클러스터링
-├── run_04_llm_analysis.py          # LLM 분석
-├── run_05_report_generation.py     # 리포트 생성
-├── src/                        # 소스 코드
-│   ├── ingest/                 # 데이터 수집/전처리
-│   │   └── data_loader.py
-│   ├── topics/                 # 주제 발견
-│   │   └── topic_discovery.py
-│   ├── cluster/                # 클러스터링
-│   │   └── document_clustering.py
-│   ├── llm/                    # LLM 분석
-│   │   └── llm_analyzer.py
-│   ├── report/                 # 리포트 생성
-│   │   └── report_generator.py
-│   └── utils/                  # 유틸리티
-│       ├── config.py
-│       └── text_processing.py
-└── outputs/                    # 결과물
-    ├── csv/                    # CSV 파일들
-    ├── reports/                # 리포트 파일들
-    └── visualizations/         # 시각화 파일들
+outputs/
+├── csv/
+│   ├── preprocessed_data.csv          # 전처리된 데이터
+│   ├── topic_assignments.csv          # 주제 할당 결과
+│   ├── global_topics_top_terms.csv    # 주제별 키워드
+│   ├── cluster_assignments.csv        # 클러스터 할당 결과
+│   ├── cluster_summary.csv            # 클러스터 요약
+│   └── analysis_results.json          # LLM 분석 결과
+├── visualizations/
+│   ├── wordclouds/                    # 워드클라우드
+│   ├── frequency_charts/              # 빈도수 차트
+│   └── cluster_distribution.png       # 클러스터 분포
+└── reports/
+    ├── 분석_리포트.md                  # 최종 분석 리포트
+    └── final_statistics.json          # 통계 요약
 ```
 
-## 🚀 설치 및 실행
-
-### 1. 환경 설정
+## 실행 방법
 
 ```bash
-# 가상환경 생성 및 활성화
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# 또는
-venv\Scripts\activate     # Windows
-
-# 필요한 패키지 설치
-pip install -r requirements.txt
-```
-
-### 2. 설정 파일 수정
-
-`config.yaml` 파일에서 다음 설정을 확인/수정하세요:
-
-```yaml
-# 데이터 설정
-data:
-  input_file: "data_sample.xlsx"  # 입력 파일명
-
-# LLM 설정 (OpenAI API 사용 시)
-llm:
-  model: "gpt-3.5-turbo"
-  # OPENAI_API_KEY 환경변수 설정 필요
-```
-
-### 3. 실행
-
-#### 전체 파이프라인 실행
-```bash
+# 전체 파이프라인 실행
 python run_all.py
-```
 
-#### 단계별 실행
-```bash
-# 1. 데이터 전처리
-python run_01_data_preprocessing.py
-
-# 2. 주제 발견
-python run_02_topic_discovery.py
-
-# 3. 클러스터링
-python run_03_clustering.py
-
-# 4. LLM 분석 (선택사항)
-python run_04_llm_analysis.py
-
-# 5. 리포트 생성
-python run_05_report_generation.py
-```
-
-## 📊 결과물
-
-### CSV 파일들
-- `global_topics_top_terms.csv`: 주제별 상위 키워드
-- `topic_assignments.csv`: 문서별 주제 할당
-- `cluster_summary.csv`: 클러스터별 요약
-- `individual_analyses.csv`: 개별 문서 LLM 분석 결과
-- `cluster_analyses.csv`: 클러스터별 LLM 분석 요약
-
-### 시각화
-- `topic_distribution.png`: 주제별 문서 수 분포
-- `cluster_distribution.png`: 클러스터별 문서 수 분포
-- `wordclouds/`: 주제별/클러스터별 워드클라우드
-- `frequency_charts/`: 빈도 분석 차트
-
-### 리포트
-- `분석_리포트.md`: 최종 분석 리포트 (Markdown)
-- `final_statistics.json`: 최종 통계 요약
-
-## 🔧 기술 스택
-
-### 핵심 기술
-- **주제 발견**: scikit-learn LDA, NMF
-- **임베딩**: Sentence-BERT (paraphrase-multilingual-MiniLM-L12-v2)
-- **클러스터링**: K-means with silhouette analysis
-- **텍스트 분석**: OpenAI GPT 모델
-- **시각화**: matplotlib, seaborn, wordcloud
-
-### 데이터 처리
-- **전처리**: pandas, numpy
-- **텍스트 정리**: 정규표현식, 개인정보 마스킹
-- **품질 관리**: 중복 제거, 길이 필터링
-
-## 📈 분석 파이프라인
-
-### 1. 데이터 전처리
-- Excel/CSV 파일 로드
-- 텍스트 정리 및 정규화
-- 개인정보 마스킹
-- 중복 제거 및 품질 관리
-
-### 2. 주제 발견
-- CountVectorizer를 사용한 텍스트 벡터화
-- LDA 알고리즘으로 주제 모델 학습
-- 주제별 상위 키워드 추출
-- 문서별 주제 할당
-
-### 3. 클러스터링
-- Sentence-BERT로 텍스트 임베딩 생성
-- Silhouette 분석으로 최적 클러스터 수 탐색
-- K-means 클러스터링 수행
-- 클러스터별 대표 문서 선택
-
-### 4. LLM 분석 (선택사항)
-- OpenAI GPT 모델을 사용한 텍스트 분석
-- 원인, 행위자, 요구사항, 리스크 등 추출
-- 클러스터별 요약 및 정책 제언
-
-### 5. 리포트 생성
-- 마크다운 형식의 종합 리포트 생성
-- 시각화 차트 및 워드클라우드 생성
-- CSV 형태의 상세 결과 저장
-
-## ⚙️ 설정 옵션
-
-### 주제 발견 설정
-```yaml
-topic_discovery:
-  algorithm: "lda"  # lda, nmf, bertopic
-  n_topics: 10
-  min_df: 5
-  max_df: 0.4
-  top_terms_per_topic: 15
-```
-
-### 클러스터링 설정
-```yaml
-clustering:
-  algorithm: "kmeans"
-  n_clusters_range: [5, 15]
-  embedding_model: "paraphrase-multilingual-MiniLM-L12-v2"
-```
-
-### LLM 설정
-```yaml
-llm:
-  model: "gpt-3.5-turbo"
-  max_tokens: 1000
-  temperature: 0.1
-```
-
-## 🔍 사용 예시
-
-### 데이터 형식
-입력 데이터는 다음 컬럼을 포함해야 합니다:
-- `연번`: 문서 ID
-- `상담일자`: 날짜
-- `상담유형`: 상담 유형
-- `상담요약`: 요약 텍스트
-- `상담인 유형`: 상담인 유형
-- `상담내용`: 상세 내용
-
-### 실행 결과
-```
-============================================================
-대규모 상담/게시판 데이터 주제 발견 및 심층 분석
-전체 파이프라인 실행
-============================================================
-
-==================== 단계 1: run_01_data_preprocessing.py ====================
-데이터 전처리 파이프라인 시작
-==================================================
-1. 데이터 로드 중...
-데이터 로드 완료: (12, 6)
-2. 데이터 전처리 중...
-데이터 전처리 시작...
-전처리 완료: (10, 8)
-3. 전처리된 데이터 저장 중...
-
-전처리 완료:
-- 원본 데이터: (12, 6)
-- 전처리 후 데이터: (10, 8)
-- 제거된 행: 2
-- 평균 텍스트 길이: 45.2
-- 최소 텍스트 길이: 20
-- 최대 텍스트 길이: 89
-
-✅ run_01_data_preprocessing.py 실행 완료
-```
-
-## 🛠️ 문제 해결
-
-### 일반적인 문제들
-
-1. **OpenAI API 키 오류**
-   ```bash
-   export OPENAI_API_KEY="your-api-key-here"
-   ```
-
-2. **한글 폰트 오류**
-   - macOS: `/System/Library/Fonts/AppleGothic.ttf`
-   - Windows: `C:/Windows/Fonts/malgun.ttf`
-   - Linux: `/usr/share/fonts/truetype/nanum/NanumGothic.ttf`
-
-3. **메모리 부족 오류**
-   - `config.yaml`에서 `n_topics` 또는 `n_clusters_range` 값을 줄이세요
-   - 데이터를 더 작은 배치로 나누어 처리하세요
-
-### 로그 확인
-각 스크립트는 상세한 로그를 출력합니다. 오류 발생 시 로그를 확인하여 문제를 파악하세요.
-
-## 📝 라이선스
-
-이 프로젝트는 MIT 라이선스 하에 배포됩니다.
-
-## 🤝 기여
-
-버그 리포트, 기능 제안, 풀 리퀘스트를 환영합니다!
-
----
-
-**참고**: LLM 분석 기능을 사용하려면 OpenAI API 키가 필요합니다. API 키는 환경변수 `OPENAI_API_KEY`에 설정하거나, `.env` 파일에 저장하세요. 
+# 개별 단계 실행
+python run_01_data_preprocessing.py    # 데이터 전처리
+python run_02_topic_discovery.py       # 주제 발견
+python run_03_clustering.py            # 클러스터링
+python run_04_llm_analysis.py          # LLM 분석
+python run_05_report_generation.py     # 리포트 생성
+``` 
