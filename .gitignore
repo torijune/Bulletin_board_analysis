@@ -179,7 +179,7 @@ $RECYCLE.BIN/
 .Trash-*
 .nfs*
 
-# 데이터 파일 (대용량 파일들) - data_sample.xlsx는 제외
+# 데이터 파일 (대용량 파일들)
 *.xls
 *.csv
 *.json
@@ -188,6 +188,7 @@ $RECYCLE.BIN/
 *.hdf5
 *.pkl
 *.pickle
+*.xlsx
 
 # 분석 결과 파일들
 outputs/
