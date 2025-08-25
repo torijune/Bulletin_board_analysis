@@ -272,3 +272,6 @@ example_*.py
 visualizations/
 charts/
 plots/ 
+
+chekc_notebook/
+analysis_notebook/
